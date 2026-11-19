@@ -30,17 +30,19 @@ Each check is a Make target, and the git hooks (`.pre-commit-config.yaml`) and C
 
 The pre-commit hook refuses commits on `main`: work on a branch and open a pull request (`make release` is the one exception, for its version-bump commit). It checks exactly what is staged (unstaged changes are stashed while it runs): ruff on the staged Python files, ty and the suite over the whole project, the lock check when `pyproject.toml` or `uv.lock` changes, and zizmor when anything under `.github/` does. The suite takes about 6 seconds; if it grows past 15–20, move its hook to the pre-push stage.
 
-CI runs on every pull request and push to `main`: a native `static` job (lint, typecheck, lock check, zizmor) and a `test` job that runs `make coverage` in the `dev` image, so the PDFs are rendered with production's Pango. Actions are pinned to commit SHAs and Dependabot raises weekly grouped updates for actions, uv and Docker. Nothing enforces CI on `main` yet (#20).
+CI runs on every pull request, push to `main` and `v*` tag: a native `static` job (lint, typecheck, lock check, zizmor) and a `test` job that runs `make coverage` in the `dev` image, so the PDFs are rendered with production's Pango. Actions are pinned to commit SHAs and Dependabot raises weekly grouped updates for actions, uv and Docker. Nothing enforces CI on `main` yet (#20).
 
 ## Docker
 
-The image listens on port 3000 and keeps its database (the business, each module's data and settings) in `/data`. Mount it: the database holds bank details and is never baked into the image.
+The image listens on port 8000, runs as the non-root `volition` user (uid 10001), and keeps its database at `/data/volition.db` (SQLite: the business, each module's data and settings). Mount a volume at `/data` and back up that file: it holds bank details and is never baked into the image. On a Linux host, a bind-mounted directory must be writable by uid 10001; a named volume needs nothing.
 
 ```sh
 make docker.build && make docker.run    # mounts ./data
 ```
 
-Pushing a `v*` tag publishes `ghcr.io/theselftaughtdev42/volition` (see `.github/workflows/publish.yml`). `GET /health` backs the container healthcheck.
+Releases are published by pushing a version tag (on `main`): the image is `ghcr.io/theselftaughtdev42/volition:<version>` (e.g. `:1.2.3`), by CI's `publish` job once `static` and `test` pass. `GET /health` backs the container healthcheck.
+
+Behind a reverse proxy, set `ALLOWED_HOSTS` to every `Host` the app will see: the public domain the proxy forwards and the name in-network health checks use (e.g. `volition.example.com,volition`).
 
 To cut a release, run `make release BUMP=patch` (or `minor`/`major`, or `V=1.2.3`) from a clean `main` that matches `origin/main`. It runs lint and tests, bumps the version in `pyproject.toml` and `uv.lock`, commits, tags `vX.Y.Z` and asks before pushing.
 

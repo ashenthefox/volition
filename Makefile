@@ -1,5 +1,5 @@
 .PHONY: install dev start test coverage test.docker lint format typecheck lock.check zizmor check \
-	release release.check docker.build docker.run docker.latest
+	release release.check docker.build docker.run docker.pull
 
 # Every check is defined here once: the git hooks (.pre-commit-config.yaml) and CI (.github/workflows/ci.yml)
 # call these targets or the same `uv run` commands, and every tool is pinned in uv.lock.
@@ -47,7 +47,7 @@ check: lint typecheck lock.check zizmor coverage
 
 # Cut a release: `make release BUMP=patch|minor|major` or `make release V=1.2.3`.
 # Bumps pyproject.toml and uv.lock, commits, tags vX.Y.Z and (after a prompt) pushes both;
-# the tag push triggers .github/workflows/publish.yml.
+# the tag push triggers the publish job in .github/workflows/ci.yml.
 release: release.check lint test
 	@set -e; \
 	if [ -n "$(V)" ]; then uv version --no-sync "$(V)"; else uv version --no-sync --bump "$(BUMP)"; fi; \
@@ -79,7 +79,8 @@ docker.build:
 	docker build -t volition:local .
 
 docker.run:
-	docker run --rm --name volition -p 127.0.0.1:3000:3000 -v "${PWD}/data:/data" volition:local
+	docker run --rm --name volition -p 127.0.0.1:8000:8000 -v "${PWD}/data:/data" volition:local
 
-docker.latest:
-	docker run --rm --name volition --platform linux/amd64 -p 127.0.0.1:3000:3000 -v "${PWD}/data:/data" ghcr.io/theselftaughtdev42/volition:latest
+docker.pull:
+	@test -n "$(V)" || (echo 'usage: make docker.pull V=1.2.3' && exit 1)
+	docker run --rm --name volition --platform linux/amd64 -p 127.0.0.1:8000:8000 -v "${PWD}/data:/data" ghcr.io/theselftaughtdev42/volition:$(V)
