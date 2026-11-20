@@ -140,13 +140,34 @@ def parse_invoice_form(body: FormBody, find_client: Callable[[str], ClientRecord
     if not line_items:
         errors.append("Add at least one line item")
 
+    def parsed_date(value: str, label: str, *, required: bool = False) -> date | None:
+        """Validate a submitted YYYY-MM-DD value before comparing calendar dates."""
+        if not value:
+            if required:
+                errors.append(f"{label} is required")
+            return None
+        try:
+            result = date.fromisoformat(value)
+        except ValueError:
+            result = None
+        if result is None or result.isoformat() != value:
+            errors.append(f"{label} must be a valid date (YYYY-MM-DD)")
+            return None
+        return result
+
+    issue_date = parsed_date(field(body, "issueDate"), "Issue date", required=True)
+    due_date = parsed_date(field(body, "dueDate"), "Due date")
+    if issue_date is not None and due_date is not None and due_date < issue_date:
+        errors.append("Due date must be on or after the issue date")
+
     period_start = field(body, "periodStart")
     period_end = field(body, "periodEnd")
-    if period_start and period_end and period_start > period_end:
+    if bool(period_start) != bool(period_end):
+        errors.append("Give both ends of the period, or neither")
+    start_date = parsed_date(period_start, "Period start")
+    end_date = parsed_date(period_end, "Period end")
+    if start_date is not None and end_date is not None and start_date > end_date:
         errors.append("Period start must be on or before its end")
-
-    if not field(body, "issueDate"):
-        errors.append("Issue date is required")
     client_id = field(body, "clientId")
     client = find_client(client_id) if client_id else None
     if not client_id:
